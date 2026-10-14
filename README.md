@@ -1,12 +1,8 @@
-# Klasifikasi Kerusakan Bangunan Akibat Gempa
+# Structural Damage Classification
 
 ## Gambaran Umum
 
-Proyek ini mengembangkan model machine learning untuk memprediksi tingkat kerusakan bangunan akibat gempa Nepal tahun 2015. Model menggunakan karakteristik bangunan, material konstruksi, dan informasi terkait lokasi untuk mengklasifikasikan setiap bangunan ke dalam salah satu dari lima tingkat kerusakan.
-
-Dataset yang digunakan berasal dari kompetisi Kaggle **Richter's Predictor: Modeling Earthquake Damage**.
-
-**Tujuan:** Memprediksi `damage_grade` untuk setiap bangunan pada dataset pengujian dan menghasilkan berkas submission Kaggle yang valid.
+Proyek ini memprediksi tingkat kerusakan bangunan (`damage_grade`, kelas 1-5) akibat gempa Gorkha, Nepal (25 April 2015, Mw 7,8). Data berasal dari survei pasca-gempa Central Bureau of Statistics (CBS) Nepal dan berisi karakteristik struktural bangunan sebelum gempa serta kerusakan aktualnya. Proyek ini adalah Tugas 1 Supervised Machine Learning dengan metrik **macro F1-score**; model neural network tidak digunakan.
 
 ## Struktur Proyek
 
@@ -43,20 +39,12 @@ Struktur direktori berikut menggambarkan susunan proyek yang digunakan:
 
 ## Dataset
 
-Unduh dataset kompetisi dari [halaman kompetisi Kaggle](<https://www.kaggle.com/competitions/richter-s-predictor-modeling-earthquake-damage>).
+Kompetisi: [structural-damage-classification](https://www.kaggle.com/competitions/structural-damage-classification). Klik "Join Competition" dan terima aturannya terlebih dahulu, lalu unduh data dengan salah satu cara berikut:
 
-Simpan berkas berikut di dalam direktori `data/`:
+- Manual: tab **Data** > **Download All**, ekstrak ke folder `data/`.
+- Kaggle API: `kaggle competitions download -c structural-damage-classification -p data` lalu ekstrak zip-nya di `data/`.
 
-``` text
-data/
-├── train.csv
-├── test.csv
-└── sample_submission.csv
-```
-
-Data pelatihan berisi karakteristik bangunan dan variabel target `damage_grade`. Data pengujian berisi bangunan yang tingkat kerusakannya harus diprediksi. Berkas `sample_submission.csv` menunjukkan format keluaran yang diwajibkan.
-
-Dataset tidak disertakan dalam repositori ini. Berkas CSV dataset dikecualikan melalui `.gitignore` agar berkas berukuran besar tidak ikut di-commit.
+Folder `data/` harus berisi `train.csv`, `test.csv`, dan `sample_submission.csv`. Berkas CSV tidak di-commit (lihat `.gitignore`).
 
 ## Instalasi
 
@@ -134,32 +122,25 @@ Notebook untuk proses submission tersedia di `notebooks/03_submission.ipynb`.
 
 ## Hasil
 
-Metrik evaluasi utama yang digunakan adalah **macro F1-score**, yang memberikan bobot yang sama kepada F1-score dari setiap tingkat kerusakan.
-
 | Evaluasi | Skor |
-| --- | ---: |
-| Out-of-fold macro F1 dengan argmax | \[Isi dengan skor aktual\] |
-| Out-of-fold macro F1 dengan adjusted offsets | \[Isi dengan skor aktual\] |
-| Skor public leaderboard Kaggle | \[Isi dengan skor aktual\] |
-| Skor private leaderboard Kaggle | Menunggu hasil akhir leaderboard |
+| --- | --- |
+| OOF macro F1, argmax (pipeline) | 0,5854 |
+| OOF macro F1, dengan offset kelas (pipeline) | 0,5908 |
+| Public / Private, pipeline (`scripts.predict`) | 0,59283 / 0,59637 |
+| Public / Private, notebook awal (submission terbaik) | 0,59617 / 0,59905 |
 
-Skor out-of-fold (OOF) dihitung dari prediksi untuk sampel pelatihan yang tidak digunakan saat model pada fold terkait dilatih. Oleh karena itu, skor OOF memberikan estimasi validasi tanpa mengevaluasi setiap sampel menggunakan model yang dilatih langsung dengan sampel tersebut.
-
-Skor adjusted offset mengukur dampak perubahan threshold keputusan kelas berdasarkan prediksi out-of-fold. Hasilnya perlu dibandingkan dengan prediksi argmax tanpa penyesuaian untuk menentukan apakah penyesuaian tersebut benar-benar meningkatkan macro F1-score.
+Submission terbaik di leaderboard berasal dari notebook awal (OOF 0,5921) yang menghitung fitur berbasis label dengan array fold manual. Setelah kode dirapikan menjadi `Pipeline` dan `ColumnTransformer`, hasilnya turun sekitar 0,003 pada leaderboard dan 0,001 pada OOF. Dugaan penyebabnya (belum diuji satu per satu): prediksi test kini berasal dari satu model, bukan rata-rata lima model fold; offset disetel pada model 80% data tetapi dipakai pada model 100% data; jumlah pohon dibuat tetap (230) tanpa early stopping; dan fitur propagasi pada data latih dihitung dari graf tanpa baris test.
 
 ## Interpretasi Model
 
-Model menggabungkan karakteristik bangunan dengan fitur tambahan yang dirancang untuk menangkap kerentanan struktur dan pola kerusakan lokal.
+- **Ketidakseimbangan kelas.** Grade 5 mencakup sekitar 36% data, Grade 1 hanya sekitar 10%. Karena metriknya macro F1, model memakai class weight dan offset per kelas pada log-probabilitas. Offset menaikkan OOF macro F1 dari 0,5854 menjadi 0,5908 (+0,0054), artinya sebagian kelas minoritas memang kurang diprediksi oleh argmax biasa.
+- **Lokasi lewat `building_id`.** Pada EDA, grade bangunan dengan ID bersebelahan berkorelasi (r sekitar 0,58). Karena itu dibuat fitur tetangga (rata-rata, simpangan baku, dan proporsi grade dari 5 bangunan berlabel terdekat) dan fitur label propagation yang menyebarkan label lewat graf ID sehingga jangkauannya lebih jauh.
+- **`weakest_link`.** Setiap kategori material diurutkan berdasarkan rata-rata kerusakan, dan skor sebuah bangunan adalah peringkat tertinggi dari kelima kolom material (bangunan hanya sekuat komponen terlemahnya). Hasil kalinya dengan rata-rata grade tetangga menggambarkan bangunan rapuh yang berada di area dengan guncangan kuat.
+- **Tanpa kebocoran label.** Semua fitur berbasis label dihitung out-of-fold di dalam `Pipeline` (`fit_transform` memakai lipatan internal, `transform` memakai seluruh label latih), sehingga label sebuah baris tidak pernah dipakai untuk fiturnya sendiri.
+- **Co-training ditolak.** Percobaan menambahkan prediksi test sebagai seed propagasi menaikkan OOF tetapi menurunkan skor public, tanda model mulai mempercayai prediksinya sendiri. Versi tersebut tidak dipakai.
+- **Feature importance dan confusion matrix:** (diisi dari `reports/figures`, lihat di bawah.)
 
-- **Karakteristik bangunan:** Fitur seperti usia bangunan, jumlah lantai, luas plinth, dan tinggi bangunan menggambarkan kondisi fisik yang mungkin berkaitan dengan performa struktur.
-- **Material konstruksi:** Informasi mengenai fondasi, atap, lantai dasar, dan superstruktur digunakan sebagai indikator konstruksi serta kemungkinan kerentanan struktur.
-- **Fitur berbasis tetangga:** Identifier bangunan yang berdekatan digunakan untuk memperoleh ringkasan tingkat kerusakan lokal dan merepresentasikan pola spasial.
-- **Fitur weakest-link:** Fitur yang berkaitan dengan material digabungkan menjadi indikator kerentanan struktur, kemudian dikombinasikan dengan interaksi antara indikator tersebut dan rata-rata tingkat kerusakan lingkungan sekitar.
-- **Fitur label propagation:** Hubungan antarbangunan digunakan untuk menghasilkan fitur tambahan yang berkaitan dengan kelas. Selama pelatihan, fitur ini dibuat secara out-of-fold untuk mengurangi leakage.
-
-Fitur-fitur tersebut membantu model memanfaatkan informasi yang lebih luas daripada atribut bangunan asli saja. Namun, hubungan prediktif antarfitur tidak secara otomatis membuktikan hubungan sebab-akibat.
-
-Visualisasi evaluasi yang dihasilkan di `reports/figures/` dapat digunakan untuk membantu interpretasi performa model. Confusion matrix, misalnya, dapat menunjukkan tingkat kerusakan yang sering tertukar dengan tingkat lainnya.
+Hubungan prediktif ini tidak membuktikan hubungan sebab-akibat.
 
 ## Reproduksibilitas
 
@@ -179,9 +160,11 @@ Artefak model yang telah disimpan mungkin tidak disertakan dalam version control
 - Fitur berbasis tetangga dan label propagation bergantung pada hubungan yang tersedia melalui identifier bangunan serta data pelatihan.
 - Adjusted class offsets dibuat berdasarkan prediksi validasi dan perlu dibandingkan dengan baseline tanpa penyesuaian.
 - Model hanya mengidentifikasi hubungan prediktif dalam dataset; model tidak membuktikan pengaruh kausal karakteristik bangunan tertentu terhadap kerusakan akibat gempa.
+- Skor pipeline akhir sedikit di bawah notebook awal (selisih sekitar 0,003 pada leaderboard).
+- Offset kelas disetel pada prediksi OOF yang sama dengan yang dipakai untuk evaluasi, sehingga skor OOF dengan offset sedikit optimistis.
 
 ## Referensi
 
-- [Kaggle — Richter's Predictor: Modeling Earthquake Damage](<https://www.kaggle.com/competitions/richter-s-predictor-modeling-earthquake-damage>)
+- [Kaggle Structural Damage Classification](<https://www.kaggle.com/competitions/structural-damage-classification>)
 - [Dokumentasi LightGBM](<https://lightgbm.readthedocs.io/>)
 - [Dokumentasi Scikit-learn](<https://scikit-learn.org/stable/>)

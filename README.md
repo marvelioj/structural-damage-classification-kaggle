@@ -25,9 +25,15 @@ Struktur direktori berikut menggambarkan susunan proyek yang digunakan:
 │   ├── train.py
 │   └── predict.py
 ├── models/
+│   ├── offsets.npy
+│   ├── oof_probs.npy
+│   └── pipeline.pkl
 ├── submissions/
+│   └── submission.csv
 └── reports/
     └── figures/
+        ├── confusion_matrix.png
+        └── feature_importance.png
 ```
 
 - `data/`: Berisi dataset yang diunduh dari Kaggle dan disimpan secara lokal.
